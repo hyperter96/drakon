@@ -4,7 +4,7 @@
     "slug": "drakon",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./src/assets/images/icon.png",
     "scheme": "drakon",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
