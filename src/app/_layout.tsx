@@ -9,6 +9,7 @@ import { View, Text } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { initWeChat } from '@/services/wechat';
+import { ENV } from '@/config/env';
 
 // 防止启动屏幕在资源加载完成前自动隐藏
 SplashScreen.preventAutoHideAsync();
@@ -34,21 +35,29 @@ function RootLayoutContent() {
 
   // 安全初始化微信SDK - 不阻塞应用启动
   useEffect(() => {
-    const setupSDKs = async () => {
-      try {
-        // 尝试初始化微信SDK，但不阻塞应用启动
-        const wechatInitialized = await initWeChat();
-        console.log('微信SDK初始化结果:', wechatInitialized ? '成功' : '失败');
-      } catch (error) {
-        // 捕获但不阻止应用继续运行
-        console.error('初始化SDK失败，但应用将继续运行', error);
+    // 延迟初始化微信SDK
+    const timer = setTimeout(() => {
+      if (ENV.debugWechat) {
+        return;
       }
-    };
+      const setupSDKs = async () => {
+        try {
+          // 尝试初始化微信SDK，但不阻塞应用启动
+          const wechatInitialized = await initWeChat();
+          console.log('微信SDK初始化结果:', wechatInitialized ? '成功' : '失败');
+        } catch (error) {
+          // 捕获但不阻止应用继续运行
+          console.error('初始化SDK失败，但应用将继续运行', error);
+        }
+      };
+  
+      // 静默执行，不影响应用启动
+      setupSDKs().catch(error => {
+        console.warn('SDK初始化过程遇到问题', error);
+      });
+    }, 2000); // 延迟2秒再初始化微信SDK
 
-    // 静默执行，不影响应用启动
-    setupSDKs().catch(error => {
-      console.warn('SDK初始化过程遇到问题', error);
-    });
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {

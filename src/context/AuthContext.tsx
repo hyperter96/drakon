@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Alert, NativeModules } from 'react-native';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { initWeChat, isWeChatInstalled, sendAuthRequest, getUserInfoWithCode } from '@/services/wechat';
+import { initWeChat, isWeChatInstalled, sendWXAuthRequest, getUserInfoWithCode } from '@/services/wechat';
+import { ENV } from '@/config/env';
 
 // 定义用户类型
 type User = {
@@ -26,17 +27,12 @@ type AuthContextType = {
 // 创建认证上下文
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 检查微信SDK是否已加载
-const isWeChatAvailable = (): boolean => {
-  const WeChat = NativeModules.RNWechat;
-  return WeChat != null && typeof WeChat.registerApp === 'function';
-};
-
 // 认证提供者组件
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [wechatInitialized, setWechatInitialized] = useState(false);
+  const [wechatLoading, setWechatLoading] = useState(false);
 
   // 在组件挂载时检查用户是否已经登录并初始化微信SDK
   useEffect(() => {
@@ -50,12 +46,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // 移除自动导航逻辑，让应用始终先显示登录页面
         }
         
-        // 尝试初始化微信SDK，但不阻塞认证流程
-        try {
-          const initialized = await initWeChat();
-          setWechatInitialized(initialized);
-        } catch (sdkError) {
-          console.warn('微信SDK初始化失败，但不影响其他认证功能', sdkError);
+        // 调试模式下，自动将微信SDK视为已初始化
+        if (ENV.debugWechat) {
+          console.log('调试模式 - 微信SDK自动标记为已初始化');
+          setWechatInitialized(true);
+        } else {
+          // 仅在非调试模式下尝试初始化微信SDK
+          try {
+            const initialized = await initWeChat();
+            setWechatInitialized(initialized);
+          } catch (sdkError) {
+            console.warn('微信SDK初始化失败，但不影响其他认证功能', sdkError);
+          }
         }
       } catch (error) {
         console.error('Failed to setup auth', error);
@@ -96,17 +98,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 微信登录方法
   const wechatLogin = async () => {
     try {
-      // 检查微信SDK是否可用
-      if (!isWeChatAvailable()) {
-        console.error('微信SDK不可用，请检查原生模块是否正确链接');
-        Alert.alert(
-          '微信登录不可用', 
-          '微信SDK未正确加载。这可能是由于SDK未正确链接或环境限制。您可以使用手机号登录作为替代。',
-          [{ text: '确定', style: 'default' }]
-        );
+      // 调试模式特殊处理
+      if (ENV.debugWechat) {
+        console.log('调试模式 - 模拟微信登录流程');
+        try {
+          setWechatLoading(true);
+          // 调用sendWXAuthRequest会返回模拟的授权码
+          const authResponse = await sendWXAuthRequest();
+          
+          if (!authResponse || !authResponse.code) {
+            Alert.alert('提示', '模拟微信授权失败');
+            return;
+          }
+          
+          // 使用模拟授权码获取用户信息
+          const userInfo = await getUserInfoWithCode(authResponse.code);
+          if (userInfo) {
+            await signIn(userInfo);
+          } else {
+            Alert.alert('提示', '获取用户信息失败，请重试');
+          }
+        } catch (error) {
+          console.error('调试模式 - 模拟微信登录失败', error);
+          Alert.alert('提示', '调试模式下模拟登录失败');
+        } finally {
+          setWechatLoading(false);
+        }
         return;
       }
       
+      // 非调试模式 - 真实微信登录流程
       // 检查微信是否已初始化
       if (!wechatInitialized) {
         const initialized = await initWeChat();
@@ -125,22 +146,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       // 发起微信授权请求
-      const authResponse = await sendAuthRequest();
-      if (!authResponse || !authResponse.code) {
-        Alert.alert('提示', '微信授权失败，请重试');
-        return;
-      }
-      
-      // 使用授权码获取用户信息
-      const userInfo = await getUserInfoWithCode(authResponse.code);
-      if (userInfo) {
-        await signIn(userInfo);
-      } else {
-        Alert.alert('提示', '获取用户信息失败，请重试');
+      try {
+        setWechatLoading(true);
+        const authResponse = await sendWXAuthRequest();
+        
+        if (!authResponse || !authResponse.code) {
+          Alert.alert('提示', '微信授权失败，请重试');
+          setWechatLoading(false);
+          return;
+        }
+        
+        // 使用授权码获取用户信息
+        const userInfo = await getUserInfoWithCode(authResponse.code);
+        if (userInfo) {
+          await signIn(userInfo);
+        } else {
+          Alert.alert('提示', '获取用户信息失败，请重试');
+        }
+      } catch (authError: any) {
+        console.error('微信授权过程出错', authError);
+        const errorMessage = authError?.message || '未知错误';
+        
+        // 用户取消不提示错误
+        if (errorMessage.includes('用户取消') || errorMessage.includes('user cancelled')) {
+          console.log('用户取消了微信授权');
+        } else {
+          Alert.alert('微信登录失败', `授权失败: ${errorMessage}`);
+        }
+      } finally {
+        setWechatLoading(false);
       }
     } catch (error) {
-      console.error('Failed to login with WeChat', error);
+      console.error('微信登录过程出错', error);
       Alert.alert('登录失败', '微信登录出错，请稍后重试');
+      setWechatLoading(false);
     }
   };
 

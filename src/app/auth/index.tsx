@@ -5,13 +5,11 @@ import {
   TextInput,
   TouchableOpacity,
   Text,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Alert,
   ActivityIndicator,
   Animated,
-  NativeModules,
+  Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/context/AuthContext';
@@ -20,11 +18,49 @@ import DragonLogo from '@/assets/images/dragon-symbol.svg';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { isWeChatInstalled } from '@/services/wechat';
+import { userAgreement, childPrivacyPolicy, privacyPolicy } from '@/constants/agreements';
+import { ENV } from '@/config/env';
+// 协议弹窗组件
+interface AgreementModalProps {
+  visible: boolean;
+  title: string;
+  content: string;
+  onClose: () => void;
+}
 
-// 检查微信SDK是否已加载
-const isWeChatAvailable = (): boolean => {
-  const WeChat = NativeModules.RNWechat;
-  return WeChat != null && typeof WeChat.registerApp === 'function';
+const AgreementModal = ({ visible, title, content, onClose }: AgreementModalProps) => {
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-center items-center bg-black/70">
+        <View className="bg-zinc-800 w-[90%] max-h-[80%] rounded-xl border border-primary/30 overflow-hidden">
+          <View className="flex-row justify-between items-center p-4 border-b border-primary/30 bg-zinc-700">
+            <Text className="text-white text-lg font-bold">{title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView className="p-4">
+            <Text className="text-white leading-6">{content}</Text>
+          </ScrollView>
+          
+          <View className="p-4 border-t border-primary/30 bg-zinc-700">
+            <TouchableOpacity 
+              className="bg-primary rounded-xl py-3 items-center"
+              onPress={onClose}
+            >
+              <Text className="text-white font-bold">我已阅读</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 };
 
 // 手机验证码登录组件
@@ -36,6 +72,9 @@ const PhoneLogin = () => {
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalContent, setModalContent] = useState('');
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -99,7 +138,19 @@ const PhoneLogin = () => {
 
   // 显示协议内容
   const showAgreement = (title: string) => {
-    Alert.alert(title, `这是${title}的内容示例，实际内容应从服务器加载。`);
+    let content = '';
+    
+    if (title === '用户协议') {
+      content = userAgreement;
+    } else if (title === '隐私政策') {
+      content = privacyPolicy;
+    } else if (title === '未成年人个人信息保护规则') {
+      content = childPrivacyPolicy;
+    }
+    
+    setModalTitle(title);
+    setModalContent(content);
+    setModalVisible(true);
   };
 
   return (
@@ -174,6 +225,13 @@ const PhoneLogin = () => {
           </Text>
         </View>
       </View>
+      
+      <AgreementModal 
+        visible={modalVisible}
+        title={modalTitle}
+        content={modalContent}
+        onClose={() => setModalVisible(false)}
+      />
     </Animated.View>
   );
 };
@@ -200,22 +258,27 @@ export default function AuthScreen() {
       useNativeDriver: true,
     }).start();
     
-    // 检查微信SDK状态
-    setSdkAvailable(isWeChatAvailable());
-    
-    // 如果SDK可用，再检查微信是否已安装
-    if (isWeChatAvailable()) {
-      const checkWechatInstalled = async () => {
-        try {
-          const installed = await isWeChatInstalled();
-          setWechatInstalled(installed);
-        } catch (error) {
-          console.error('检查微信安装状态失败', error);
+    // 检查微信是否已安装
+    const checkWechatInstalled = async () => {
+      try {
+        if (ENV.debugWechat) {
+          setWechatInstalled(false);
+          setSdkAvailable(false);
+          return;
         }
-      };
-      
-      checkWechatInstalled();
-    }
+        // 检查微信是否已安装会隐式检查SDK是否可用
+        const installed = await isWeChatInstalled();
+        setWechatInstalled(installed);
+        // 如果能正常执行isWeChatInstalled，说明SDK可用
+        setSdkAvailable(true);
+      } catch (error) {
+        console.error('检查微信安装状态失败，SDK可能不可用', error);
+        setSdkAvailable(false);
+        setWechatInstalled(false);
+      }
+    };
+    
+    checkWechatInstalled();
   }, []);
 
   const handleWechatLogin = async () => {
