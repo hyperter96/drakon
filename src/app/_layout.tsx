@@ -7,22 +7,12 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { View, Text } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AuthProvider } from '@/context/AuthContext';
 import { initWeChat } from '@/services/wechat';
 import { ENV } from '@/config/env';
 
 // 防止启动屏幕在资源加载完成前自动隐藏
 SplashScreen.preventAutoHideAsync();
-
-// 加载屏幕组件
-function LoadingScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-zinc-900">
-      <Text className="text-primary text-lg font-bold mb-4">龙应用</Text>
-      <View className="w-8 h-8 border-4 border-primary rounded-full border-t-transparent animate-spin" />
-    </View>
-  );
-}
 
 // 内容组件
 function RootLayoutContent() {
@@ -30,8 +20,6 @@ function RootLayoutContent() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
-
-  const { isLoading, user } = useAuth();
 
   // 安全初始化微信SDK - 不阻塞应用启动
   useEffect(() => {
@@ -66,10 +54,6 @@ function RootLayoutContent() {
     }
   }, [loaded]);
 
-  // 如果字体还未加载完成或正在加载用户状态，返回加载屏幕
-  if (!loaded || isLoading) {
-    return <LoadingScreen />;
-  }
 
   // 如果加载字体时出错，显示错误信息
   if (error) {
@@ -81,15 +65,25 @@ function RootLayoutContent() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* 登录页面放在根Stack中，默认显示登录页 */}
-        <Stack.Screen name="auth" />
-        {/* 主应用页面作为另一个路由 */}
-        <Stack.Screen name="pages" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    // 添加全局背景色包装器，确保所有页面过渡期间背景一致
+    <View className="flex-1 bg-zinc-800">
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack 
+          screenOptions={{ 
+            headerShown: false,
+            // 添加过渡动画配置，使页面过渡更平滑
+            animation: 'fade',
+            contentStyle: { backgroundColor: 'transparent' } // 保持内容背景透明，以便使用外层背景色
+          }}
+        >
+          {/* 登录页面放在根Stack中，默认显示登录页 */}
+          <Stack.Screen name="auth" />
+          {/* 主应用页面作为另一个路由 */}
+          <Stack.Screen name="pages" />
+        </Stack>
+        <StatusBar style="light" />
+      </ThemeProvider>
+    </View>
   );
 }
 

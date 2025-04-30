@@ -241,24 +241,33 @@ export default function AuthScreen() {
   const [wechatLoading, setWechatLoading] = useState(false);
   const [wechatInstalled, setWechatInstalled] = useState(false);
   const [sdkAvailable, setSdkAvailable] = useState(false);
-  const scaleAnim = useState(new Animated.Value(0.9))[0];
+  const scaleAnim = useState(new Animated.Value(0.95))[0];
   const rotateAnim = useState(new Animated.Value(0))[0];
+  const bgOpacityAnim = useState(new Animated.Value(1))[0];
+  const contentOpacityAnim = useState(new Animated.Value(0.3))[0];
   
   useEffect(() => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 8,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-
-    Animated.timing(rotateAnim, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
+    requestAnimationFrame(() => {
+      Animated.parallel([
+        Animated.timing(contentOpacityAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 7,
+          tension: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
     
-    // 检查微信是否已安装
     const checkWechatInstalled = async () => {
       try {
         if (ENV.debugWechat) {
@@ -266,10 +275,8 @@ export default function AuthScreen() {
           setSdkAvailable(false);
           return;
         }
-        // 检查微信是否已安装会隐式检查SDK是否可用
         const installed = await isWeChatInstalled();
         setWechatInstalled(installed);
-        // 如果能正常执行isWeChatInstalled，说明SDK可用
         setSdkAvailable(true);
       } catch (error) {
         console.error('检查微信安装状态失败，SDK可能不可用', error);
@@ -311,18 +318,23 @@ export default function AuthScreen() {
     <View className="flex-1 bg-zinc-650 overflow-hidden relative">
       <StatusBar style="dark" />
       
-      <ImageBackground
-        source={require('@/assets/images/sign_in_bg.png')}
-        className="absolute top-0 left-0 right-0 bottom-0 opacity-70"
-        resizeMode="cover"
-      >
-        <LinearGradient
-          colors={['rgba(0,0,0,0.7)', 'rgba(24,24,27,0.8)', 'rgba(24,24,27,0.9)']}
-          className="absolute top-0 left-0 right-0 bottom-0"
-        />
-      </ImageBackground>
+      <Animated.View style={{ opacity: bgOpacityAnim, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+        <ImageBackground
+          source={require('@/assets/images/sign_in_bg.png')}
+          className="absolute top-0 left-0 right-0 bottom-0 opacity-70"
+          resizeMode="cover"
+        >
+          <LinearGradient
+            colors={['rgba(0,0,0,0.7)', 'rgba(24,24,27,0.8)', 'rgba(24,24,27,0.9)']}
+            className="absolute top-0 left-0 right-0 bottom-0"
+          />
+        </ImageBackground>
+      </Animated.View>
       
-      <View className="flex-1 absolute top-20 left-0 right-0 bottom-0 z-10 mt-10">
+      <Animated.View 
+        className="flex-1 absolute top-20 left-0 right-0 bottom-0 z-10 mt-10"
+        style={{ opacity: contentOpacityAnim }}
+      >
         <ScrollView 
           className="flex-1"
           contentContainerStyle={{ 
@@ -391,7 +403,7 @@ export default function AuthScreen() {
             <Text className="text-primary text-xs font-medium">© 2025 龙影幻境 版权所有</Text>
           </View>
         </ScrollView>
-      </View>
+      </Animated.View>
     </View>
   );
 } 
